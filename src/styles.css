@@ -188,28 +188,6 @@ kbd {
   transform: translateY(1px);
 }
 
-.rules {
-  margin-top: 18px;
-  color: var(--muted);
-  font-size: 0.88rem;
-}
-
-.rules summary {
-  cursor: pointer;
-  color: var(--text);
-  font-weight: 550;
-}
-
-.rules ul {
-  margin: 10px 0 0;
-  padding-left: 18px;
-  line-height: 1.6;
-}
-
-.rules b {
-  color: var(--text);
-}
-
 /* ---------------- Game screen ---------------- */
 
 .game {

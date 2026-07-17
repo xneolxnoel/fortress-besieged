@@ -26,19 +26,6 @@ This is a static site with no backend; `base: './'` is set so the build works at
   `.github/workflows/deploy.yml` builds and deploys. In repo Settings → Pages, set Source to "GitHub Actions".
 - **Any static host** (Netlify, Vercel, Cloudflare Pages, S3, …): run `npm run build`, then serve the `dist/` folder.
 
-### How to play
-
-- Each turn, either **move your pawn** one square or **place a wall** (you start with 10).
-- Pawns move orthogonally. You may **jump** over an adjacent opponent pawn, and **sidestep
-  diagonally** when the square behind them is blocked or off the board.
-- Walls are two cells long and block everyone. You may **never** place a wall that completely seals
-  a player from their goal edge (the engine enforces this).
-- First pawn to reach the opposite edge wins.
-
-**Controls:** click a blue dot to move your pawn; click a board intersection to place a wall. Press
-**R** (or right-click) to rotate the wall between horizontal and vertical. Use the H / V buttons
-under the board too.
-
 ## Modes
 
 | Mode | Description |

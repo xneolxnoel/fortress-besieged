@@ -17,7 +17,7 @@ import { DEFAULT_SETTINGS } from '../types'
 
 const STORAGE_KEY = 'fortress-besieged.v1'
 const MUTE_KEY = 'fortress-besieged.muted'
-const MIN_AI_THINK_MS = 1000 // minimum visible "thinking" time so the AI never snaps instantly
+const MIN_AI_THINK_MS = 300 // minimum visible "thinking" time so the AI never snaps instantly
 
 // Single shared worker for the whole app lifetime.
 const worker = new Worker(new URL('../ai/worker.ts', import.meta.url), { type: 'module' })
