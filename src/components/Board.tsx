@@ -72,11 +72,22 @@ export function Board({ state, interactive, onMove }: BoardProps) {
   const wallsLeft = state.wallsLeft[mover]
   const lastMove = state.history.length ? state.history[state.history.length - 1] : null
 
-  // Clear any preview when the turn or interactivity changes (no stale ghost on the next move).
+  // Clear the preview only when the board becomes non-interactive (game over, AI thinking).
+  // Clearing after a human move happens synchronously in handleMove, so a fresh preview made
+  // right after the AI responds can never be wiped by a late-flushed effect.
   useEffect(() => {
+    if (!interactive) {
+      setHover(null)
+      setAwaitConfirm(false)
+    }
+  }, [interactive])
+
+  /** The human made a move: drop any wall preview, then forward it. */
+  function handleMove(move: Move) {
     setHover(null)
     setAwaitConfirm(false)
-  }, [mover, interactive])
+    onMove(move)
+  }
 
   // Static layers — memoized so pointer-move (which only changes the ghost) stays cheap.
   const cells = useMemo(() => renderCells(), [])
@@ -86,7 +97,7 @@ export function Board({ state, interactive, onMove }: BoardProps) {
   )
 
   /** Convert a pointer event to viewBox coordinates, or null if unavailable. */
-  function pointFromEvent(e: ReactPointerEvent | ReactMouseEvent): DOMPoint | null {
+  function pointFromEvent(e: ReactPointerEvent | ReactMouseEvent | PointerEvent): DOMPoint | null {
     const svg = svgRef.current
     const ctm = svg?.getScreenCTM()
     if (!svg || !ctm) return null
@@ -108,7 +119,7 @@ export function Board({ state, interactive, onMove }: BoardProps) {
   }
 
   function onPointerMove(e: ReactPointerEvent) {
-    if (e.pointerType === 'touch') return // touch has no hover; taps are handled in onPointerDown
+    if (e.pointerType === 'touch') return // touch has no hover; taps are handled natively (handlePointerDown)
     if (!interactive || wallsLeft <= 0) {
       setHover(null)
       return
@@ -132,7 +143,11 @@ export function Board({ state, interactive, onMove }: BoardProps) {
 
   // Touch uses a two-tap flow: the first tap previews the wall (ghost), the second tap on the
   // same intersection places it. Mouse/pen keep the hover-then-click behaviour.
-  function onPointerDown(e: ReactPointerEvent) {
+  // Attached as a NATIVE listener (effect below): React's delegated synthetic events were
+  // observed to occasionally drop a pointerdown dispatched right after an off-thread (worker)
+  // commit — i.e. exactly when the human taps after the AI moves. A native listener on the svg
+  // always fires; the ref indirection keeps the closure fresh.
+  function handlePointerDown(e: PointerEvent) {
     pointerTypeRef.current = e.pointerType
     if (e.pointerType !== 'touch' || !interactive || wallsLeft <= 0) return
     const p = pointFromEvent(e)
@@ -147,7 +162,7 @@ export function Board({ state, interactive, onMove }: BoardProps) {
     // Second tap on the same intersection confirms, using the already-previewed orientation.
     if (hover && hover.x === next.x && hover.y === next.y) {
       if (isWallLegal(state, hover.x, hover.y, hover.orientation)) {
-        onMove({ type: 'wall', player: mover, x: hover.x, y: hover.y, orientation: hover.orientation })
+        handleMove({ type: 'wall', player: mover, x: hover.x, y: hover.y, orientation: hover.orientation })
       }
       setHover(null)
       setAwaitConfirm(false)
@@ -157,17 +172,43 @@ export function Board({ state, interactive, onMove }: BoardProps) {
     }
   }
 
+  const pointerDownRef = useRef(handlePointerDown)
+  pointerDownRef.current = handlePointerDown
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const listener = (e: PointerEvent) => pointerDownRef.current(e)
+    svg.addEventListener('pointerdown', listener)
+    return () => svg.removeEventListener('pointerdown', listener)
+  }, [])
+
   function onClick(e: ReactMouseEvent) {
-    if (pointerTypeRef.current === 'touch') return // touch placement handled in onPointerDown
+    if (pointerTypeRef.current === 'touch') return // touch placement handled natively (handlePointerDown)
     if (!interactive || wallsLeft <= 0) return
     const h = pointerToWall(e)
     if (h && isWallLegal(state, h.x, h.y, h.orientation)) {
-      onMove({ type: 'wall', player: mover, x: h.x, y: h.y, orientation: h.orientation })
+      handleMove({ type: 'wall', player: mover, x: h.x, y: h.y, orientation: h.orientation })
     }
   }
 
   const hoverLegal =
     hover !== null && interactive && wallsLeft > 0 && isWallLegal(state, hover.x, hover.y, hover.orientation)
+
+  // Touch confirm-bar actions (shown after the first tap previews a wall).
+  function flipGhostOrientation() {
+    setHover((h) => (h ? { ...h, orientation: h.orientation === 'H' ? 'V' : 'H' } : h))
+  }
+  function confirmGhostWall() {
+    if (hover && wallsLeft > 0 && isWallLegal(state, hover.x, hover.y, hover.orientation)) {
+      handleMove({ type: 'wall', player: mover, x: hover.x, y: hover.y, orientation: hover.orientation })
+    }
+    setHover(null)
+    setAwaitConfirm(false)
+  }
+  function cancelGhostWall() {
+    setHover(null)
+    setAwaitConfirm(false)
+  }
 
   return (
     <div className="board-wrap">
@@ -177,19 +218,77 @@ export function Board({ state, interactive, onMove }: BoardProps) {
         className="board"
         shapeRendering="geometricPrecision"
         onPointerMove={onPointerMove}
-        onPointerDown={onPointerDown}
-        onPointerLeave={() => {
+        onPointerLeave={(e) => {
+          // Don't clear a touch preview: touch has no hover to "leave", and a stray mouse
+          // pointerleave (e.g. a parked cursor when the confirm bar shifts the layout) must
+          // not wipe a preview the user is about to confirm.
+          if (e.pointerType === 'touch' || awaitConfirm) return
           setHover(null)
           setAwaitConfirm(false)
         }}
         onClick={onClick}
       >
+        {/* Fake-3D paint kit: light comes from the top-left, so gradients run light → dark
+            toward the bottom-right and pieces cast soft shadows down-right. */}
+        <defs>
+          <linearGradient id="frameGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#5a4327" />
+            <stop offset="1" stopColor="#2f2314" />
+          </linearGradient>
+          <linearGradient id="grooveGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#43331f" />
+            <stop offset="1" stopColor="#2b2013" />
+          </linearGradient>
+          <linearGradient id="tileGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#f4e9cf" />
+            <stop offset="1" stopColor="#d8c6a2" />
+          </linearGradient>
+          <linearGradient id="tileGradHomeW" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#fdf8e8" />
+            <stop offset="1" stopColor="#eadcbe" />
+          </linearGradient>
+          <linearGradient id="tileGradHomeB" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#c9bd9c" />
+            <stop offset="1" stopColor="#a3977a" />
+          </linearGradient>
+          <linearGradient id="wallGradH" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#dc5a44" />
+            <stop offset="1" stopColor="#96291b" />
+          </linearGradient>
+          <linearGradient id="wallGradV" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#dc5a44" />
+            <stop offset="1" stopColor="#96291b" />
+          </linearGradient>
+          <radialGradient id="pawnGradW" cx="0.35" cy="0.3" r="0.9">
+            <stop offset="0" stopColor="#ffffff" />
+            <stop offset="1" stopColor="#cfc8b8" />
+          </radialGradient>
+          <radialGradient id="pawnGradB" cx="0.35" cy="0.3" r="0.9">
+            <stop offset="0" stopColor="#5b606c" />
+            <stop offset="1" stopColor="#14161b" />
+          </radialGradient>
+          <linearGradient id="edgeGradW" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#fbf8f2" />
+            <stop offset="1" stopColor="#d6cfc0" />
+          </linearGradient>
+          <linearGradient id="edgeGradB" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#3b3f48" />
+            <stop offset="1" stopColor="#17191e" />
+          </linearGradient>
+          <filter id="wallShadow" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="0.05" stdDeviation="0.045" floodColor="#000000" floodOpacity="0.45" />
+          </filter>
+        </defs>
+
+        {/* Wooden frame around the whole board (fills the margin the viewBox adds) */}
+        <rect x={-0.5} y={-0.5} width={10} height={10} rx={0.3} fill="url(#frameGrad)" />
+
         {/* Goal-edge bands in the margin: top = White's goal, bottom = Black's goal */}
-        <rect x={0} y={-0.5} width={9} height={0.42} className="edge-goal-white" />
-        <rect x={0} y={9.08} width={9} height={0.42} className="edge-goal-black" />
+        <rect x={0} y={-0.5} width={9} height={0.42} fill="url(#edgeGradW)" />
+        <rect x={0} y={9.08} width={9} height={0.42} fill="url(#edgeGradB)" />
 
         {/* Groove background + tiled cells (dark gaps between tiles = the grooves) */}
-        <rect x={0} y={0} width={9} height={9} className="board-groove" rx={0.25} />
+        <rect x={0} y={0} width={9} height={9} fill="url(#grooveGrad)" rx={0.25} />
         {cells}
 
         {placedWalls}
@@ -210,27 +309,49 @@ export function Board({ state, interactive, onMove }: BoardProps) {
 
         {/* Legal pawn-move dots (on top); stopPropagation so they don't also place a wall */}
         {dests.map((c) => (
-          <circle
-            key={`d${c.x},${c.y}`}
-            cx={c.x + 0.5}
-            cy={8.5 - c.y}
-            r={0.16}
-            className="move-dot"
-            onClick={(e) => {
-              e.stopPropagation()
-              onMove({ type: 'pawn', player: mover, to: c })
-            }}
-          >
-            <title>{moveToNotation({ type: 'pawn', player: mover, to: c })}</title>
-          </circle>
+          <g key={`d${c.x},${c.y}`}>
+            {/* Fat invisible tap target (touch only, enabled via CSS) around the visible dot */}
+            <circle
+              cx={c.x + 0.5}
+              cy={8.5 - c.y}
+              r={0.4}
+              className="dot-hit"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleMove({ type: 'pawn', player: mover, to: c })
+              }}
+            />
+            <circle
+              cx={c.x + 0.5}
+              cy={8.5 - c.y}
+              r={0.16}
+              className="move-dot"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleMove({ type: 'pawn', player: mover, to: c })
+              }}
+            >
+              <title>{moveToNotation({ type: 'pawn', player: mover, to: c })}</title>
+            </circle>
+          </g>
         ))}
       </svg>
 
       <div className="path-readout">
         <PathInfo state={state} />
       </div>
-      {awaitConfirm && (
-        <div className="touch-hint">Tap the same spot to place · tap elsewhere to move</div>
+      {awaitConfirm && hover && (
+        <div className="touch-actions">
+          <button type="button" onClick={flipGhostOrientation} title="Flip wall orientation">
+            ⇄ Flip
+          </button>
+          <button type="button" className="place" disabled={!hoverLegal} onClick={confirmGhostWall}>
+            ✓ Place wall
+          </button>
+          <button type="button" onClick={cancelGhostWall} title="Cancel">
+            ✕
+          </button>
+        </div>
       )}
     </div>
   )
@@ -240,7 +361,7 @@ function renderCells(): ReactNode[] {
   const out: ReactNode[] = []
   for (let y = 0; y < 9; y++) {
     for (let x = 0; x < 9; x++) {
-      const cls = y === 0 ? 'tile tile-home-white' : y === 8 ? 'tile tile-home-black' : 'tile'
+      const fill = y === 0 ? 'url(#tileGradHomeW)' : y === 8 ? 'url(#tileGradHomeB)' : 'url(#tileGrad)'
       out.push(
         <rect
           key={`c${x},${y}`}
@@ -249,7 +370,7 @@ function renderCells(): ReactNode[] {
           width={1 - 2 * G}
           height={1 - 2 * G}
           rx={0.06}
-          className={cls}
+          fill={fill}
         />,
       )
     }
@@ -261,12 +382,36 @@ function renderWalls(horiz: boolean[][], vert: boolean[][]): ReactNode[] {
   const out: ReactNode[] = []
   horiz.forEach((row, x) =>
     row.forEach((on, y) => {
-      if (on) out.push(<rect key={`hw${x},${y}`} x={x} y={8 - y - T / 2} width={2} height={T} className="wall" />)
+      if (on)
+        out.push(
+          <rect
+            key={`hw${x},${y}`}
+            x={x}
+            y={8 - y - T / 2}
+            width={2}
+            height={T}
+            className="wall"
+            fill="url(#wallGradH)"
+            filter="url(#wallShadow)"
+          />,
+        )
     }),
   )
   vert.forEach((row, x) =>
     row.forEach((on, y) => {
-      if (on) out.push(<rect key={`vw${x},${y}`} x={x + 1 - T / 2} y={7 - y} width={T} height={2} className="wall" />)
+      if (on)
+        out.push(
+          <rect
+            key={`vw${x},${y}`}
+            x={x + 1 - T / 2}
+            y={7 - y}
+            width={T}
+            height={2}
+            className="wall"
+            fill="url(#wallGradV)"
+            filter="url(#wallShadow)"
+          />,
+        )
     }),
   )
   return out
@@ -285,9 +430,13 @@ function GhostWall({
 }) {
   const fill = !affordable ? 'var(--ghost-bad)' : legal ? 'var(--ghost-ok)' : 'var(--ghost-bad)'
   if (orientation === 'H') {
-    return <rect x={anchor.x} y={8 - anchor.y - T / 2} width={2} height={T} fill={fill} opacity={0.65} />
+    return (
+      <rect x={anchor.x} y={8 - anchor.y - T / 2} width={2} height={T} className="ghost-wall" fill={fill} opacity={0.65} />
+    )
   }
-  return <rect x={anchor.x + 1 - T / 2} y={7 - anchor.y} width={T} height={2} fill={fill} opacity={0.65} />
+  return (
+    <rect x={anchor.x + 1 - T / 2} y={7 - anchor.y} width={T} height={2} className="ghost-wall" fill={fill} opacity={0.65} />
+  )
 }
 
 // Highlights the most recent move: an outline on the destination cell (pawn move) or around the
@@ -333,11 +482,14 @@ function Pawn({ player, pos, active }: { player: Player; pos: Cell; active: bool
   const cy = 8.5 - pos.y
   return (
     <g onClick={(e) => e.stopPropagation()}>
+      {/* Soft ground shadow under the piece — sells the raised-pawn look */}
+      <ellipse cx={cx} cy={cy + 0.27} rx={0.27} ry={0.09} fill="#000000" opacity={0.3} />
       {active && <circle cx={cx} cy={cy} r={0.4} className="pawn-active" />}
       <path
         d={PAWN_PATH}
         transform={`translate(${cx} ${cy}) scale(0.95)`}
-        className={`pawn pawn-${player}`}
+        className="pawn"
+        fill={player === 'white' ? 'url(#pawnGradW)' : 'url(#pawnGradB)'}
         strokeLinejoin="round"
         strokeLinecap="round"
       />

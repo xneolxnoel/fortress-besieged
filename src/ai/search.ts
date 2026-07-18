@@ -421,7 +421,7 @@ export function searchRoot(
 /** Iterative deepening: keep the move from the deepest fully-completed search, feeding each
  *  iteration's best move forward as an ordering hint to the next, and sharing one killer table
  *  and one transposition table across all depths (shallow entries feed the deeper iterations).
- *  `wallR` (default 2) widens root wall vision — used by Hard. */
+ *  `wallR` (default 2) widens root wall vision — Normal uses the default, Hard passes 3. */
 export function searchIterative(state: GameState, maxDepth: number, timeLimitMs: number, wallR = 2): Move {
   const deadline = now() + timeLimitMs
   const ctx = makeCtx(deadline)

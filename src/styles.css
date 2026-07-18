@@ -257,29 +257,10 @@ kbd {
   user-select: none;
 }
 
-.board-groove {
-  fill: var(--groove);
-}
-
-.tile {
-  fill: var(--tile);
-}
-.tile-home-white {
-  fill: var(--tile-home-white);
-}
-.tile-home-black {
-  fill: var(--tile-home-black);
-}
-
-.edge-goal-white {
-  fill: var(--edge-white);
-}
-.edge-goal-black {
-  fill: var(--edge-black);
-}
+/* Tiles, groove, goal bands, walls, and pawns are painted with SVG gradients/filters set as
+   attributes in Board.tsx (fake-3D look) — no flat fills here. */
 
 .wall {
-  fill: var(--wall);
   rx: 0.05;
 }
 
@@ -312,12 +293,6 @@ kbd {
   stroke: var(--pawn-stroke);
   stroke-width: 0.03;
 }
-.pawn-white {
-  fill: var(--white-pawn);
-}
-.pawn-black {
-  fill: var(--black-pawn);
-}
 .pawn-active {
   fill: none;
   stroke: var(--accent);
@@ -330,11 +305,32 @@ kbd {
   text-align: center;
 }
 
-.touch-hint {
-  margin-top: 6px;
-  text-align: center;
-  font-size: 0.8rem;
-  color: var(--last);
+/* Touch wall-placement confirm bar: shown after the first tap previews a wall, so placing a
+   wall never depends on hitting the same tiny intersection twice. */
+.touch-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.touch-actions button {
+  flex: 1;
+  min-height: 44px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.touch-actions .place {
+  flex: 2;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border: none;
+  color: white;
+  font-weight: 650;
+}
+.touch-actions button:disabled {
+  opacity: 0.4;
 }
 
 .path-info {
@@ -642,7 +638,57 @@ kbd {
   .choice-row.three {
     grid-template-columns: 1fr;
   }
+  /* Keep the header on ONE line no matter how long the headline gets ("Computer is
+     thinking…" vs "Your move") — wrapping used to push the board down on every AI turn. */
   .game-head {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+  }
+  /* Don't let the headline squeeze the Menu button until its label wraps (that grew the
+     header to two lines and pushed the board down on every AI turn). */
+  .game-head > .ghost {
+    flex: none;
+    white-space: nowrap;
+  }
+  .turn-line {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.95rem;
+  }
+  .turn-text {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .head-right {
+    flex: none;
+  }
+}
+
+@media (max-width: 360px) {
+  /* Very narrow phones: the mode is already shown in the sidebar player cards. */
+  .mode-tag {
+    display: none;
+  }
+}
+
+/* ---------------- Touch devices ---------------- */
+
+/* Invisible fat tap target around each (small) move dot; only shown on coarse pointers. */
+.dot-hit {
+  display: none;
+  fill: rgba(0, 0, 0, 0);
+}
+
+@media (pointer: coarse) {
+  .dot-hit {
+    display: block;
+  }
+  .move-dot {
+    r: 0.24;
+  }
+  .ghost-wall {
+    opacity: 0.85;
   }
 }

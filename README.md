@@ -31,9 +31,9 @@ This is a static site with no backend; `base: './'` is set so the build works at
 | Mode | Description |
 | --- | --- |
 | **Hot-seat** | Two humans share one device. |
-| **vs Computer — Easy** | Greedy 1-ply, partly random. Relaxed. |
-| **vs Computer — Normal** | Negamax, depth 2. A solid casual game. |
-| **vs Computer — Hard** | Iterative-deepening negamax (depth 5 opening → 6–8 mid-game) with alpha-beta pruning, PV-first + killer-move ordering, late-move reductions, a Zobrist-hashed transposition table, wider root wall vision, and a threat-aware evaluation (path length, wall count, goal-edge reachability, and a near-goal threat term so it blocks a losing race instead of walking into it). |
+| **vs Computer — Easy** | Negamax, depth 2. A relaxed casual game. |
+| **vs Computer — Normal** | Iterative-deepening negamax (depth 5 opening → 6–8 mid-game, ~2000ms per move) with alpha-beta pruning, PV-first + killer-move ordering, late-move reductions, a Zobrist-hashed transposition table, wider root wall vision (R=2), and a threat-aware evaluation (path length, wall count, goal-edge reachability, and a near-goal threat term so it blocks a losing race instead of walking into it). |
+| **vs Computer — Hard** | The same engine pushed further: a doubled think budget (~4000ms per move), a deeper iterative-deepening cap (depth 10), and wider root wall vision (R=3), so it searches deeper and spots longer-range wall plays. |
 
 The AI runs in a **Web Worker** so the UI stays responsive while it thinks.
 

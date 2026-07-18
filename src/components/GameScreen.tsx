@@ -22,7 +22,7 @@ export function GameScreen({ game }: { game: UseGame }) {
         </button>
         <div className={`turn-line turn-${state.turn}`}>
           <span className={`chip chip-${state.turn}`} />
-          {headline}
+          <span className="turn-text">{headline}</span>
         </div>
         <div className="head-right">
           <button

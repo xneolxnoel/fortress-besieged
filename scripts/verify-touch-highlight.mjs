@@ -71,7 +71,7 @@ try {
   // First touch tap at intersection (5,4): should PREVIEW only (ghost + hint), not place.
   await touchTap(5, 4)
   await sleep(150)
-  const hintAfterFirst = await has('.touch-hint')
+  const hintAfterFirst = await has('.touch-actions')
   const ghostAfterFirst = await has('rect[opacity="0.65"]:not(.wall)')
   const countAfterFirst = await wallsCount('white') // still 10/10 if not placed
 

@@ -29,7 +29,8 @@ describe('AI', () => {
     for (const level of ['easy', 'normal', 'hard'] as const) {
       expect(isLegal(start, chooseMove(start, level))).toBe(true)
     }
-  })
+    // Normal (~2000ms) and Hard (~4000ms) run iterative deepening to their full budget here.
+  }, 15000)
 
   it('normal and hard take an immediate win', () => {
     const s = fresh([4, 7], [4, 1]) // white one step from the goal
@@ -38,19 +39,19 @@ describe('AI', () => {
       expect(move.type).toBe('pawn')
       if (move.type === 'pawn') expect(move.to).toEqual({ x: 4, y: 8 })
     }
-  })
+  }, 15000)
 
   it('hard does not hand the opponent a one-move win when it can block', () => {
     // Opponent (black) is one step from its goal at row 0; it is NOT hard's turn here — instead
     // verify the bot returns a legal, non-suicidal-looking move and runs within a sane budget.
-    // Hard now iterative-deepens to depth 4 with a ~2000ms budget, so allow generous headroom.
+    // Hard iterative-deepens up to depth 10 with a ~4000ms budget, so allow generous headroom.
     const s = fresh([4, 4], [4, 1])
     const start = Date.now()
     const move = chooseMove(s, 'hard')
     const elapsed = Date.now() - start
     expect(isLegal(s, move)).toBe(true)
-    expect(elapsed).toBeLessThan(5000) // hard should finish well under this even at depth 4
-  })
+    expect(elapsed).toBeLessThan(9000) // hard should finish well under this even at depth 10
+  }, 15000)
 
   it('hard walls to stay alive when it cannot win a pure race', () => {
     // White is 8 steps out, black only 2, white to move — white cannot outrun black, so the only
@@ -60,7 +61,7 @@ describe('AI', () => {
     // clear pick. Assert it places a wall (any wall), not a pawn move.
     const s = fresh([4, 0], [4, 2])
     expect(chooseMove(s, 'hard').type).toBe('wall')
-  })
+  }, 15000)
 
   it('evaluation counts a wall deficit as behind even when ahead in raw distance', () => {
     // White is one step from the goal, Black eight steps out — the raw race favors White — but
